@@ -1,7 +1,11 @@
-name: DevSecOps - Test and Deploy
+name: DevSecOps - Test, Security and Deploy
 
 on:
   push:
+    branches:
+      - main
+
+  pull_request:
     branches:
       - main
 
@@ -31,9 +35,47 @@ jobs:
         run: |
           pytest -v
 
+  security:
+    name: Bandit and Trivy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python para Bandit
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar Bandit
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit==1.8.6
+
+      - name: Ejecutar Bandit
+        run: |
+          bandit -r app
+
+      - name: Construir imagen Docker
+        run: |
+          docker build -t devsecops-api:${{ github.sha }} .
+
+      - name: Ejecutar Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "devsecops-api:${{ github.sha }}"
+          format: "table"
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: "HIGH,CRITICAL"
+
   deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     name: Deploy to EC2
-    needs: test
+    needs:
+      - test
+      - security
     runs-on: ubuntu-latest
 
     steps:
